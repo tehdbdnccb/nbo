@@ -1,0 +1,48 @@
+{
+  "name": "nbo1795",
+  "version": "1.0.0",
+  "description": "Calculates localized KRA import landed costs and thermodynamic tuning telemetry (sea-level vs 1,795m ASL) for high-performance vehicles.",
+  "author": "Branham Kola | BTech Solutions",
+  "permissions": [
+    "network"
+  ],
+  "ui": {
+    "type": "web",
+    "entrypoint": "https://nairobi-tuning.vercel.app"
+  },
+  "executas": [
+    {
+      "name": "nairobi_telemetry_engine",
+      "description": "Rust-powered reasoning engine executing KRA CRSP tax valuations and altitude-adjusted thermodynamic horsepower calculations.",
+      "binary_path": "https://nairobi-tuning.vercel.app/api/v1",
+      "tools": [
+        {
+          "name": "compute_telemetry",
+          "description": "Computes the Mombasa landed KES cost and Nairobi altitude-derated wheel horsepower for a specified vehicle and tuning stage.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "model": { 
+                "type": "string", 
+                "description": "Vehicle make and model (e.g., Porsche Cayenne Turbo GT)" 
+              },
+              "year": { 
+                "type": "integer", 
+                "description": "Year of manufacture. Must be >= 2019 to pass KEBS import regulations." 
+              },
+              "cc": { 
+                "type": "integer", 
+                "description": "Engine displacement in CC. Used to calculate the 25% vs 35% excise duty band." 
+              },
+              "stage": {
+                "type": "integer",
+                "description": "Tuning stage: 1, 2, or 3."
+              }
+            },
+            "required": ["model", "year", "cc", "stage"]
+          }
+        }
+      ]
+    }
+  ]
+}

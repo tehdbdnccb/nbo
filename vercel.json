@@ -1,0 +1,41 @@
+{
+  "framework": "nextjs",
+  "rewrites": [
+    {
+      "source": "/api/v1/:path*",
+      "destination": "https://nairobi-tuning-production.up.railway.app/api/v1/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/v1/tuning/live-advisory",
+      "headers": [
+        { 
+          "key": "Cache-Control", 
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate" 
+        },
+        { 
+          "key": "Connection", 
+          "value": "keep-alive" 
+        },
+        { 
+          "key": "X-Accel-Buffering", 
+          "value": "no" 
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+[package]
+name = "nbo1795"
+version = "1.0.0"
+edition = "2021"
+authors = ["Branham Kola <branham@btechsolutions.ke>"]
+description = "Nairobi Auto-Tuning Engine Core"
+
+[dependencies]
+# Async Runtime & Web Framework
+tokio = { version = "1.37", features = ["full"] }
+axum = { version = "0.7", features = ["macros"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "set-header"] }
+
+# Serialization & Domain Types
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# SSE & Upstream Clients (For Groq Infrastructure Layer)
+reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest-eventsource = "0.6"
+futures = "0.3"
+
+# Telemetry & Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
