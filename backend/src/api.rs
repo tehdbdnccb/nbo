@@ -9,22 +9,20 @@ use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, sync::Arc};
 
-use crate::application::{AdvisoryStreamPort, SimulationUseCase};
+use crate::application::{AdvisoryStreamPort, SimulationUseCase, VehicleBlueprint};
 use crate::domain::DomainError;
 
-// --- DTOs ---
 #[derive(Deserialize)]
 pub struct SimulationQuery {
     pub model: String,
     pub year: u32,
-    pub cc: u32,
     pub stage: u8,
     pub focus: String,
 }
 
 #[derive(Serialize)]
 pub struct SimulationPayload {
-    pub model: String,
+    pub blueprint: VehicleBlueprint,
     pub landed_vehicle_kes: f64,
     pub duties_kes: f64,
     pub hardware_kes: f64,
@@ -39,7 +37,6 @@ pub struct AppState {
     pub advisory_port: Arc<dyn AdvisoryStreamPort>,
 }
 
-// --- Defenses ---
 pub struct InputSanitizer;
 
 impl InputSanitizer {
@@ -48,7 +45,9 @@ impl InputSanitizer {
         if trimmed.is_empty() || trimmed.len() > max_len {
             return Err(DomainError::InvalidInput("Identifier length out of bounds"));
         }
-        let is_clean = trimmed.chars().all(|c| c.is_alphanumeric() || c == ' ' || c == '-');
+        let is_clean = trimmed
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == ' ' || c == '-' || c == '.' || c == '/');
         if !is_clean {
             return Err(DomainError::InvalidInput("Illegal characters detected"));
         }
@@ -56,7 +55,6 @@ impl InputSanitizer {
     }
 }
 
-// --- Handlers (Strictly Max 2 Methods) ---
 pub struct TelemetryController;
 
 impl TelemetryController {
@@ -64,17 +62,17 @@ impl TelemetryController {
         State(state): State<AppState>,
         Json(req): Json<SimulationQuery>,
     ) -> Result<Json<SimulationPayload>, (StatusCode, String)> {
-        let clean_model = InputSanitizer::sanitize_identifier(&req.model, 48)
+        let clean_model = InputSanitizer::sanitize_identifier(&req.model, 64)
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("{:?}", e)))?;
 
         let result = state
             .simulation_use_case
-            .execute(&clean_model, req.year, req.cc, req.stage)
+            .execute(&clean_model, req.year, req.stage)
             .await
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("{:?}", e)))?;
 
         Ok(Json(SimulationPayload {
-            model: clean_model,
+            blueprint: result.blueprint,
             landed_vehicle_kes: result.landed_vehicle_kes,
             duties_kes: result.duties_kes,
             hardware_kes: result.hardware_kes,
@@ -88,9 +86,9 @@ impl TelemetryController {
         State(state): State<AppState>,
         Query(req): Query<SimulationQuery>,
     ) -> Result<impl IntoResponse, (StatusCode, String)> {
-        let clean_model = InputSanitizer::sanitize_identifier(&req.model, 48)
+        let clean_model = InputSanitizer::sanitize_identifier(&req.model, 64)
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("{:?}", e)))?;
-        let clean_focus = InputSanitizer::sanitize_identifier(&req.focus, 32)
+        let clean_focus = InputSanitizer::sanitize_identifier(&req.focus, 64)
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("{:?}", e)))?;
 
         let stream = state
@@ -110,7 +108,6 @@ impl TelemetryController {
     }
 }
 
-// --- Router Definition ---
 pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/telemetry", post(TelemetryController::compute_metrics))

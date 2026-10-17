@@ -1,10 +1,33 @@
 use std::pin::Pin;
 use std::sync::Arc;
 use futures::stream::Stream;
+use serde::{Deserialize, Serialize};
 use crate::domain::{DomainError, KraTaxCalculator, NairobiAltitudeEngine};
 
-/// Output structure decoupled from HTTP DTOs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HotspotBlueprint {
+    pub stage: u8,
+    pub x_percent: u8,
+    pub y_percent: u8,
+    pub subsystem: String,
+    pub hardware_spec: String,
+    pub default_focus: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VehicleBlueprint {
+    pub canonical_model: String,
+    pub engine_code: String,
+    pub displacement_cc: u32,
+    pub cylinders: u8,
+    pub base_whp: u32,
+    pub base_crsp_kes: f64,
+    pub image_url: String,
+    pub hotspots: Vec<HotspotBlueprint>,
+}
+
 pub struct SimulationResult {
+    pub blueprint: VehicleBlueprint,
     pub landed_vehicle_kes: f64,
     pub duties_kes: f64,
     pub hardware_kes: f64,
@@ -13,13 +36,14 @@ pub struct SimulationResult {
     pub kes_per_whp: f64,
 }
 
-/// Port: Data fetching contract
-#[async_trait::async_trait]
-pub trait CrspPort: Send + Sync {
-    async fn fetch_base_crsp(&self, model: &str) -> Result<f64, DomainError>;
+pub trait VehicleDiscoveryPort: Send + Sync {
+    fn discover_vehicle<'a>(
+        &'a self,
+        query: &'a str,
+        year: u32,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<VehicleBlueprint, DomainError>> + Send + 'a>>;
 }
 
-/// Port: LLM Streaming contract
 pub trait AdvisoryStreamPort: Send + Sync {
     fn stream_advisory(
         &self,
@@ -29,38 +53,38 @@ pub trait AdvisoryStreamPort: Send + Sync {
     ) -> Pin<Box<dyn Stream<Item = Result<String, String>> + Send>>;
 }
 
-/// Orchestrates the KRA and Altitude domain models
 pub struct SimulationUseCase {
-    crsp_repo: Arc<dyn CrspPort>,
+    discovery_port: Arc<dyn VehicleDiscoveryPort>,
 }
 
 impl SimulationUseCase {
-    pub fn new(crsp_repo: Arc<dyn CrspPort>) -> Self {
-        Self { crsp_repo }
+    pub fn new(discovery_port: Arc<dyn VehicleDiscoveryPort>) -> Self {
+        Self { discovery_port }
     }
 
     pub async fn execute(
         &self,
-        model: &str,
+        query: &str,
         year: u32,
-        cc: u32,
         stage: u8,
     ) -> Result<SimulationResult, DomainError> {
-        // 1. Enforce Domain Invariant
         let age = KraTaxCalculator::validate_age(year, 2026)?;
+        let blueprint = self.discovery_port.discover_vehicle(query, year).await?;
 
-        // 2. Fetch Base CRSP
-        let base_crsp = self.crsp_repo.fetch_base_crsp(model).await?;
+        let valuation = KraTaxCalculator::compute_landed_cost(
+            blueprint.base_crsp_kes,
+            age,
+            blueprint.displacement_cc,
+        );
 
-        // 3. Execute Pure Math
-        let valuation = KraTaxCalculator::compute_landed_cost(base_crsp, age, cc);
         let telemetry = NairobiAltitudeEngine::calculate_stage_telemetry(
-            450, // Base HP mocked for demonstration; in production, fetch from DB
+            blueprint.base_whp,
             stage,
             valuation.total_landed_kes,
         )?;
 
         Ok(SimulationResult {
+            blueprint,
             landed_vehicle_kes: valuation.total_landed_kes,
             duties_kes: valuation.total_duties_kes,
             hardware_kes: telemetry.hardware_cost_kes,
