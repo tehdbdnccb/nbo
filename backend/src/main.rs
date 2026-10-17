@@ -26,13 +26,17 @@ async fn main() {
 
     // 2. Wire Dependency Injection (Infrastructure -> Application)
     // In production, Groq API key and DB pools are instantiated here.
-    let _advisory_port = infrastructure::GroqAdvisoryAdapter::new(
-        std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY environment variable missing"),
-    );
-    let _simulation_use_case = application::SimulationUseCase::new(); // Mapped in application.rs
+    let api_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY environment variable missing");
+
+    let discovery_port: Arc<dyn application::VehicleDiscoveryPort> =
+        Arc::new(infrastructure::GroqVehicleProfiler::new(api_key.clone()));
+    let advisory_port: Arc<dyn application::AdvisoryStreamPort> =
+        Arc::new(infrastructure::GroqAdvisoryAdapter::new(api_key));
+    let simulation_use_case = Arc::new(application::SimulationUseCase::new(discovery_port));
 
     let app_state = api::AppState {
-        // AppState population omitted for brevity; wires the Arc<UseCases> into Axum
+        simulation_use_case,
+        advisory_port,
     };
 
     // 3. Configure Strict Edge Security & CORS
